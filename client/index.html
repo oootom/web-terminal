@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Terminal</title>
+</head>
+<body>
+  <canvas id="terminalCanvas" width="800" height="900"></canvas>
+  <script>
+    const _DEFAULT_LINE_HEIGHT = 20;
+
+    const canvas = document.getElementById('terminalCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '12px monospace';
+
+    let cursorX = 0;
+    let cursorY = _DEFAULT_LINE_HEIGHT;
+
+    function drawCanvasText(text) {
+      const lines = text.split('\n');
+
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        line = line.replace(/\t/g, '    ');
+
+        if (cursorX + ctx.measureText(line).width > canvas.width) {
+          cursorX = 0;
+          cursorY += _DEFAULT_LINE_HEIGHT;
+        }
+
+        // 检查是否需要扩展 canvas 高度
+        if (cursorY > canvas.height - _DEFAULT_LINE_HEIGHT) {
+          extendCanvasHeight();
+        }
+
+        ctx.fillText(line, cursorX, cursorY);
+        cursorX += ctx.measureText(line).width;
+
+        if (i < lines.length - 1) {
+          cursorX = 0;
+          cursorY += _DEFAULT_LINE_HEIGHT;
+        }
+      }
+    }
+
+    function extendCanvasHeight() {
+      const oldCanvas = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      canvas.height += _DEFAULT_LINE_HEIGHT * 20;
+
+      ctx.font = '12px monospace';
+      ctx.putImageData(oldCanvas, 0, 0);
+    }
+    
+    const ws = new WebSocket("ws://localhost:3000", "echo-protocol");
+
+    let command = '';
+
+    addEventListener('keydown', (event) => {
+      event.preventDefault();
+
+      if (event.key === 'Enter') {
+        handleEnter();
+        return;
+      }
+
+      if (event.key === 'Backspace') {
+        handleBackspace();
+        return;
+      }
+
+      if (event.ctrlKey && event.key === 'c') {
+        handleCtrlC();
+        return;
+      }
+
+      // 暂时忽略其他组合键
+      if (event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) {
+        return;
+      }
+
+      if (event.key.length === 1) {
+        handleCharacterInput(event.key);
+      }
+    });
+
+    function handleEnter() {
+      if (command.length === 0) {
+        return;
+      }
+
+      if (ws.readyState!== ws.OPEN) {
+        console.error('WebSocket connection is closed');
+        return;
+      }
+      
+      console.log('WebSocket command sent', command);
+      ws.send(JSON.stringify(command));
+
+      command = '';
+      cursorX = 0;
+      cursorY += _DEFAULT_LINE_HEIGHT;
+    }
+
+    function handleBackspace() {
+      if (command.length > 0) {
+        const lastChar = command.slice(-1);
+        command = command.slice(0, -1);
+        const charWidth = ctx.measureText(lastChar).width;
+        cursorX -= charWidth;
+        if (cursorX < 0) {
+          cursorX = canvas.width - charWidth;
+          cursorY -= _DEFAULT_LINE_HEIGHT;
+        }
+        ctx.clearRect(cursorX, cursorY - _DEFAULT_LINE_HEIGHT, charWidth, _DEFAULT_LINE_HEIGHT);
+      }
+    }
+
+    function handleCtrlC() {
+      if (command.length === 0) {
+        return;
+      }
+
+      command = '';
+      cursorX = 0;
+      cursorY += _DEFAULT_LINE_HEIGHT;
+    }
+
+    function handleCharacterInput(char) {
+      drawCanvasText(char);
+      command += char;
+    }
+    
+    ws.onopen = () => {
+      console.log('WebSocket connection opened');
+      drawCanvasText('Web Terminal server connected\n');
+    }
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error', error);
+      drawCanvasText('Web Terminal server error\n');
+    }
+
+    ws.onmessage = (message) => {
+      console.log('WebSocket message received', message.data);
+
+      let data = JSON.parse(message.data);
+
+      if (!data) {
+        return;
+      }
+      if (!data.endsWith('\n')) {
+        data += '\n'
+      }
+
+      drawCanvasText(JSON.parse(message.data));
+
+      command = '';
+    };
+  </script>
+</body>
+</html>
