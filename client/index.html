@@ -10,6 +10,10 @@
   <script>
     const _DEFAULT_LINE_HEIGHT = 20;
 
+    const _DEFAULT_WS_URL = 'ws://localhost:3000';
+    const _DEFAULT_WS_RETRY_COUNT = 10;
+    const _DEFAULT_WS_RETRY_INTERVAL = 1000;
+
     const canvas = document.getElementById('terminalCanvas');
     const ctx = canvas.getContext('2d');
     ctx.font = '12px monospace';
@@ -52,8 +56,7 @@
       ctx.putImageData(oldCanvas, 0, 0);
     }
     
-    const ws = new WebSocket("ws://localhost:3000", "echo-protocol");
-
+    let ws;
     let command = '';
 
     addEventListener('keydown', (event) => {
@@ -91,6 +94,9 @@
 
       if (ws.readyState!== ws.OPEN) {
         console.error('WebSocket connection is closed');
+
+        drawCanvasText('\nWeb Terminal server error\n');
+        command = '';
         return;
       }
       
@@ -130,33 +136,56 @@
       drawCanvasText(char);
       command += char;
     }
-    
-    ws.onopen = () => {
-      console.log('WebSocket connection opened');
-      drawCanvasText('Web Terminal server connected\n');
-    }
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error', error);
-      drawCanvasText('Web Terminal server error\n');
-    }
 
-    ws.onmessage = (message) => {
-      console.log('WebSocket message received', message.data);
+    let retry = 0;
+    function webSocketInit() {
+      ws = new WebSocket(_DEFAULT_WS_URL, "echo-protocol");
 
-      let data = JSON.parse(message.data);
+      ws.onopen = () => {
+        console.log('WebSocket connection opened');
+        drawCanvasText('Web Terminal server connected\n');
 
-      if (!data) {
-        return;
-      }
-      if (!data.endsWith('\n')) {
-        data += '\n'
+        retry = 0;
       }
 
-      drawCanvasText(JSON.parse(message.data));
+      ws.onerror = (error) => {
+        console.error('WebSocket error', error);
+        drawCanvasText('Web Terminal server error\n');
+      }
 
-      command = '';
-    };
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
+
+        if (retry < _DEFAULT_WS_RETRY_COUNT) {
+            retry++;
+            setTimeout(() => {
+              webSocketInit();
+            }, _DEFAULT_WS_RETRY_INTERVAL);
+        } else {
+          // retry = 0;
+        }
+      }
+
+      ws.onmessage = (message) => {
+        console.log('WebSocket message received', message.data);
+
+        let data = JSON.parse(message.data);
+
+        if (!data) {
+          return;
+        }
+        if (!data.endsWith('\n')) {
+          data += '\n'
+        }
+
+        drawCanvasText(JSON.parse(message.data));
+
+        command = '';
+      };
+    }
+
+    webSocketInit();
   </script>
 </body>
 </html>
