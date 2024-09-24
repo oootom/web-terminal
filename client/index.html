@@ -33,8 +33,7 @@
           cursorY += _DEFAULT_LINE_HEIGHT;
         }
 
-        // 检查是否需要扩展 canvas 高度
-        if (cursorY > canvas.height - _DEFAULT_LINE_HEIGHT) {
+        if (cursorY > canvas.height - _DEFAULT_LINE_HEIGHT * 5) {
           extendCanvasHeight();
         }
 
